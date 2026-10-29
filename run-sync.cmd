@@ -7,7 +7,7 @@ if not exist ".venv\Scripts\python.exe" (
   exit /b 1
 )
 echo Syncing Tencent daily data. Keep this window open until finished.
-echo Full-market download may take several hours.
+echo Only missing sessions are downloaded; usually a few minutes.
 "%~dp0.venv\Scripts\python.exe" -X utf8 -m backend.cli sync --provider tencent
 set "run_exit=%errorlevel%"
 echo.

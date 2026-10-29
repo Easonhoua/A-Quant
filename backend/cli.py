@@ -11,14 +11,16 @@ def main():
     p.add_argument('--provider',choices=['eastmoney','tencent'],default='eastmoney')
     p.add_argument('--adx-filter',action='store_true',help='S1启用ADX对照过滤')
     p.add_argument('--code',action='append',help='repair局部补取股票代码，可重复传入')
+    p.add_argument('--full',action='store_true',help='忽略缓存整段重取450天（修复历史或换数据源时用）')
+    p.add_argument('--workers',type=int,default=None,help='并行同步数，默认8；设为1恢复串行')
     a=p.parse_args()
     try:
         sync_error=None
         if a.command=='repair':
             if not a.code or any(len(c)!=6 or not c.isdigit() for c in a.code): raise ValueError('repair需要六位--code')
-            print(json.dumps(sync_live(provider=a.provider,codes=a.code),ensure_ascii=False));return
+            print(json.dumps(sync_live(provider=a.provider,codes=a.code,full=a.full,workers=a.workers),ensure_ascii=False));return
         if a.command in ('sync','daily'):
-            try: print(json.dumps(sync_live(provider=a.provider),ensure_ascii=False))
+            try: print(json.dumps(sync_live(provider=a.provider,full=a.full,workers=a.workers),ensure_ascii=False))
             except Exception as e:
                 if a.command=='sync':raise
                 sync_error=str(e)

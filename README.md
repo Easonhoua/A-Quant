@@ -50,7 +50,7 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1 -Install
 
 ```powershell
 .venv\Scripts\python.exe -m pip install -r requirements-live.txt
-.venv\Scripts\python.exe -m backend.cli sync                          # 全市场同步，首次可能很久
+.venv\Scripts\python.exe -m backend.cli sync                          # 全市场同步；首次回补450天，之后只取新增交易日
 .venv\Scripts\python.exe -m backend.cli report --mode live --capital 100000
 ```
 
@@ -99,7 +99,7 @@ ATR / RSI / ADX 用 Wilder 平滑（ATR 从第二根 K 线的真实波幅开始�
 
 ## 5. 数据质量与替换
 
-示例行情、缓存过期、盘中未收盘、交易日历不足、全市场不完整、覆盖率不足、任一持仓无法估值：**全部把新增数量置 0**，并在页面写明原因。非交易日与盘中只允许最近一个已完成的收盘交易日，15:30 是保守确认时间。
+示例行情、缓存过期、盘中未收盘、交易日历不足、全市场不完整、覆盖率不足、任一持仓无法估值：**全部把新增数量置 0**，并在页面写明原因。非交易日与盘中只允许最近一个已完成的收盘交易日，15:30 是保守确认时间。**供应商的日线更新可能晚于 15:30**：覆盖率不足时只会拦住新计划，隔一段时间重跑同步即可补齐，不要据此认定停牌。
 
 `backend/data.py` 是数据边界，引擎只读下面结构的 JSON（金额单位元、成交量单位股、价格同一复权口径、日期升序且唯一、OHLC 合法）：
 
@@ -109,7 +109,7 @@ ATR / RSI / ADX 用 Wilder 平滑（ATR 从第二根 K 线的真实波幅开始�
 
 正式缓存是 `data/live.json`。**不要手动把 `calendar_verified` 或 `complete` 设成 true 来绕过校验。** 适配器调用 [AKShare](https://akshare.akfamily.xyz/data/stock/stock_quote.html)（`stock_zh_a_spot_em` / `stock_zh_a_hist` / `tool_trade_date_hist_sina`）。
 
-**已知限制**：正式数据是不复权原始价格（为了不拿复权价和真实成本混用），未自动处理除权、分红、送转；长周期回测有明显限制。免费行情会限流、变更或不可用，V1 不保证获取成功，没有并行请求与断点续传。
+**已知限制**：正式数据是不复权原始价格（为了不拿复权价和真实成本混用），未自动处理除权、分红、送转；长周期回测有明显限制。免费行情会限流、变更或不可用，V1 不保证获取成功。同步默认增量：只从缓存最后一根 K 线之后开始取，8 路并发（`--workers 1` 恢复串行），没有断点续传；供应商事后修订的历史 K 线不会被增量同步发现，需要 `--full` 整段重取。
 
 ## 6. 回测边界
 

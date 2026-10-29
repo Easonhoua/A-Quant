@@ -55,4 +55,75 @@ class ProviderTests(unittest.TestCase):
             with self.assertRaises(ConnectionError):data.sync_live()
             self.assertEqual(path.read_text(),'previous-cache')
 
+    # 以下为增量同步：缓存里已有的交易日不应重复下载
+    @staticmethod
+    def _expected():
+        now=datetime.now(ZoneInfo('Asia/Shanghai'))
+        return now.date() if (now.hour,now.minute)>=(15,30) else now.date()-timedelta(days=1)
+
+    def _cache(self, expected, last, provider='tencent'):
+        bar={'date':last.isoformat(),'open':10,'high':11,'low':9,'close':10,'volume':1000,'amount':10000}
+        return {'mode':'live','provider':provider,'as_of':last.isoformat(),'expected_session':last.isoformat(),
+                'calendar_verified':True,'calendar':[(expected-timedelta(days=1)).isoformat(),expected.isoformat(),(expected+timedelta(days=1)).isoformat()],
+                'complete':True,'errors':[],
+                'stocks':[{'code':str(600000+i),'name':'正常','bars':[dict(bar)]} for i in range(1000)]}
+
+    def _spot(self):
+        return pd.DataFrame([{'代码':'sh'+str(600000+i),'名称':'正常'} for i in range(1000)])
+
+    def test_incremental_sync_requests_only_missing_sessions(self):
+        expected=self._expected(); last=expected-timedelta(days=1)
+        dates=[last,expected,expected+timedelta(days=1)]
+        calls=[]
+        def fake(symbol,start_date,end_date,adjust,timeout):
+            calls.append((start_date,end_date))
+            return pd.DataFrame([{'date':expected,'open':10,'high':11,'low':9,'close':10.5,'volume':1000,'amount':10500}])
+        store=MagicMock();store.positions.return_value=[]
+        with tempfile.TemporaryDirectory() as folder,patch.object(data,'DATA',Path(folder)),patch('backend.store.Store',return_value=store),patch('akshare.tool_trade_date_hist_sina',return_value=pd.DataFrame({'trade_date':dates})),patch('akshare.stock_zh_a_spot',return_value=self._spot()),patch('akshare.stock_zh_a_hist_tx',side_effect=fake),patch('time.sleep'):
+            (Path(folder)/'live.json').write_text(json.dumps(self._cache(expected,last)),encoding='utf-8')
+            result=data.sync_live('tencent');after=json.loads((Path(folder)/'live.json').read_text(encoding='utf-8'))
+        self.assertTrue(result['incremental'])
+        self.assertEqual(result['requests'],1000)
+        self.assertTrue(calls and all(c==(expected.strftime('%Y%m%d'),expected.strftime('%Y%m%d')) for c in calls))
+        self.assertEqual([b['date'] for b in after['stocks'][0]['bars']],[last.isoformat(),expected.isoformat()])
+
+    def test_sync_with_current_cache_makes_no_requests(self):
+        expected=self._expected(); dates=[expected-timedelta(days=1),expected,expected+timedelta(days=1)]
+        store=MagicMock();store.positions.return_value=[]
+        with tempfile.TemporaryDirectory() as folder,patch.object(data,'DATA',Path(folder)),patch('backend.store.Store',return_value=store),patch('akshare.tool_trade_date_hist_sina',return_value=pd.DataFrame({'trade_date':dates})),patch('akshare.stock_zh_a_spot',return_value=self._spot()),patch('akshare.stock_zh_a_hist_tx',side_effect=AssertionError('不应发请求')),patch('time.sleep'):
+            (Path(folder)/'live.json').write_text(json.dumps(self._cache(expected,expected)),encoding='utf-8')
+            result=data.sync_live('tencent')
+        self.assertEqual(result['requests'],0)
+        self.assertEqual(result['errors'],0)
+        self.assertTrue(result['complete'])
+
+    def test_empty_incremental_response_is_not_an_error(self):
+        expected=self._expected(); last=expected-timedelta(days=1)
+        dates=[last,expected,expected+timedelta(days=1)]
+        empty=pd.DataFrame(columns=['date','open','high','low','close','volume','amount'])
+        store=MagicMock();store.positions.return_value=[]
+        with tempfile.TemporaryDirectory() as folder,patch.object(data,'DATA',Path(folder)),patch('backend.store.Store',return_value=store),patch('akshare.tool_trade_date_hist_sina',return_value=pd.DataFrame({'trade_date':dates})),patch('akshare.stock_zh_a_spot',return_value=self._spot()),patch('akshare.stock_zh_a_hist_tx',return_value=empty),patch('time.sleep'):
+            (Path(folder)/'live.json').write_text(json.dumps(self._cache(expected,last)),encoding='utf-8')
+            result=data.sync_live('tencent');after=json.loads((Path(folder)/'live.json').read_text(encoding='utf-8'))
+        self.assertEqual(result['errors'],0)
+        self.assertEqual(after['stocks'][0]['bars'][-1]['date'],last.isoformat())
+        self.assertFalse(result['complete'])  # 覆盖率不足仍然拦住，不静默放行
+
+    def test_provider_change_forces_full_refetch(self):
+        expected=self._expected(); last=expected-timedelta(days=1)
+        dates=[last,expected,expected+timedelta(days=1)]
+        calls=[]
+        def fake(symbol,start_date,end_date,adjust,timeout):
+            calls.append((start_date,end_date))
+            return pd.DataFrame([{'date':expected,'open':10,'high':11,'low':9,'close':10.5,'volume':1000,'amount':10500}])
+        store=MagicMock();store.positions.return_value=[]
+        with tempfile.TemporaryDirectory() as folder,patch.object(data,'DATA',Path(folder)),patch('backend.store.Store',return_value=store),patch('akshare.tool_trade_date_hist_sina',return_value=pd.DataFrame({'trade_date':dates})),patch('akshare.stock_zh_a_spot',return_value=self._spot()),patch('akshare.stock_zh_a_hist_tx',side_effect=fake),patch('time.sleep'):
+            (Path(folder)/'live.json').write_text(json.dumps(self._cache(expected,last,provider='eastmoney')),encoding='utf-8')
+            result=data.sync_live('tencent');after=json.loads((Path(folder)/'live.json').read_text(encoding='utf-8'))
+        full_start=(expected-timedelta(days=450)).strftime('%Y%m%d')
+        self.assertTrue(calls and all(c[0]==full_start and c[1]==expected.strftime('%Y%m%d') for c in calls))
+        self.assertEqual(after['provider'],'tencent')
+        self.assertEqual([b['date'] for b in after['stocks'][0]['bars']],[expected.isoformat()])
+        self.assertFalse(result['incremental'])
+
 if __name__=='__main__':unittest.main()
