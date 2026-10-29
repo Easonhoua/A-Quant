@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+frontend/node_modules/
+frontend/.build-temp/
+data/state.sqlite3*
+data/live.json
+data/review/
