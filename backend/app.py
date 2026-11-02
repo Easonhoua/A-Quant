@@ -30,6 +30,13 @@ class TestRequest(BaseModel):
     strict_filter: bool = True
     slippage: float = Field(default=.001,ge=0,le=.05,allow_inf_nan=False)
 
+class ClearPositionsRequest(BaseModel):
+    mode: Literal['demo','live']
+
+@app.post('/api/positions/clear')
+def clear_positions(t:ClearPositionsRequest):
+    return store.clear_positions(t.mode)
+
 @app.get('/api/health')
 def health(): return {'status':'ok','version':'1.0.0','strategy_version':STRATEGY['version'],'trading':'manual-only'}
 
