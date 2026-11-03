@@ -52,6 +52,9 @@ def report(mode:Literal['demo','live']='demo',capital:float=Query(100000,ge=1000
                      amplitude_filter=amplitude_filter,market_filter=market_filter,top_n=top_n,
                      model_filter=model_filter)
         result['ledger']=store.ledger(mode)
+        result['sync_info']={'provider':snapshot.get('provider'), 'fetched_at':snapshot.get('fetched_at'),
+                             'complete':snapshot.get('complete',False), 'error_count':len(snapshot.get('errors',[])),
+                             'errors':snapshot.get('errors',[])[:10]}
         return result
     except (ValueError,KeyError) as e: raise HTTPException(409,str(e))
 

@@ -1,4 +1,4 @@
-﻿"""Deterministic rule baseline; no network, persistence, or order submission."""
+"""Deterministic rule baseline; no network, persistence, or order submission."""
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 from statistics import mean
@@ -202,14 +202,48 @@ def daily(snapshot, positions, capital=100000, adx_filter=False, strict_filter=F
         f=features(bars); mv=f['close']*p['quantity']; value+=mv
         anomalies=price_anomalies(bars[-61:],p['code'])
         stop=max(0,stop_reference(p['avg_cost'],f['atr']))
-        action='继续观察；次日重新检查'
-        if f['close']<=stop: action='已触及成本减2倍当前ATR参考线（非锁定止损）：下个可交易时段评估减仓/退出；跌停可能无法成交'
-        elif f['close']<f['ma20']: action='跌破20日均线：评估减仓，避免继续加仓'
+        close,atr,ma20=f['close'],f['atr'],f['ma20']
+        # 持仓起点：账本里剩余批次的最早成交日；找不到（缓存早于建仓）则退回最近60根近似
+        dates=[b['date'] for b in bars]
+        since=p.get('opened'); idx=dates.index(since) if since in dates else None
+        since_idx=idx if idx is not None else max(0,len(bars)-60)
+        peak=max(b['close'] for b in bars[since_idx:])
+        holding_days=(len(bars)-1-idx) if idx is not None else None
+        peak_drawdown=(peak-close)/peak if peak else None
+        peak_drawdown_atr=(peak-close)/atr if atr and peak else None
+        dist_stop=(close-stop)/close if stop else None
+        dist_stop_atr=(close-stop)/atr if stop and atr else None
+        dist_ma20=(close-ma20)/close
+        dist_ma20_atr=(close-ma20)/atr if atr else None
+        # 分级只影响提示文案，不改变引擎判定与仓位
+        grade,action='无动作','收盘未触及止损，也不在MA20附近；下一交易日重新检查'
+        if close<=stop:
+            grade,action='退出','已触及成本减2倍当前ATR参考线（非锁定止损）：下个可交易时段评估减仓/退出；跌停可能无法成交'
+        elif close<ma20:
+            # 新建仓当日就收在MA20下方：先给一天观察，避免对刚买入的仓位直接提示减半
+            if holding_days==0:
+                grade,action='观察','新建仓当日收盘已在MA20下方：明日不能收回MA20再减半'
+            else:
+                grade,action='减半','收盘跌破MA20：评估减仓（可先减半），避免继续加仓'
+        elif dist_ma20_atr is not None and dist_ma20_atr<=1:
+            grade,action='观察',f'距MA20仅{dist_ma20_atr:.2f}×ATR：接近跌破线，下一交易日重点观察，收盘跌破MA20即减仓'
+        elif peak_drawdown_atr is not None and peak_drawdown_atr>=2:
+            grade,action='观察',f'距持仓高点已回撤{peak_drawdown_atr:.1f}×ATR：浮盈保护，下一交易日重点观察'
         if anomalies:
-            stop=None; action='近期存在异常价格跳变，可能为除权或数据问题；核实前暂停技术建议'
+            stop=None; grade='观察'; action='近期存在异常价格跳变，可能为除权或数据问题；核实前暂停技术建议'
             warnings.append(p['code']+'近期异常价格跳变待核实：暂停新增计划')
-        if warnings: action='行情仅供复核，暂停新增操作；'+action
-        holdings.append({**p,'status':'已分析','close':f['close'],'market_value':round(mv,2),'pnl':round(mv-p['quantity']*p['avg_cost'],2),'stop':stop,'action':action,'valuation_date':bars[-1]['date'],'price_anomalies':anomalies})
+        holdings.append({**p,'status':'已分析','close':close,'market_value':round(mv,2),
+                         'pnl':round(mv-p['quantity']*p['avg_cost'],2),'stop':stop,
+                         'grade':grade,'action':action,
+                         'dist_stop_pct':round(dist_stop,4) if dist_stop is not None else None,
+                         'dist_stop_atr':round(dist_stop_atr,2) if dist_stop_atr is not None else None,
+                         'dist_ma20_pct':round(dist_ma20,4),
+                         'dist_ma20_atr':round(dist_ma20_atr,2) if dist_ma20_atr is not None else None,
+                         'holding_days':holding_days,
+                         'peak_close':round(peak,2) if peak else None,
+                         'peak_drawdown_pct':round(peak_drawdown,4) if peak_drawdown is not None else None,
+                         'peak_drawdown_atr':round(peak_drawdown_atr,2) if peak_drawdown_atr is not None else None,
+                         'valuation_date':bars[-1]['date'],'price_anomalies':anomalies})
     if unknown: warnings.append('至少一笔持仓无法估值：已阻止全部新买入计划')
     exposure=value/capital
     risk={'capital':capital,'known_market_value':round(value,2),'exposure':None if unknown else round(exposure,4),

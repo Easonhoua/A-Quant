@@ -56,6 +56,8 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1 -Install
 .venv\Scripts\python.exe -m backend.cli report --mode live --capital 100000
 ```
 
+所有默认命令（`sync`、`daily`、`run-sync.cmd`、`run-daily.cmd` 和定时日报）统一使用腾讯日线 / 新浪名单。需要东方财富时显式传 `--provider eastmoney` 或 `daily.ps1 -Provider eastmoney`；两种来源的名单可能不同，切换来源会覆盖同一份 `data/live.json` 并整段重取。界面显示当前缓存来源、同步时间与错误数。
+
 或者一条命令：`powershell -ExecutionPolicy Bypass -File .\daily.ps1 -Capital 100000`（同步 + 持仓优先日报）。
 
 生成 `data/report-live.json` 后，页面切到「AKShare 本地缓存」再点「重新分析」。**前端刷新只读缓存，不会偷偷发起几千次行情请求。**

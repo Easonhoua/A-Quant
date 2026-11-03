@@ -78,6 +78,7 @@ def sync_live(provider='eastmoney', codes=None, full=False, workers=None):
     import akshare as ak
     import sys, time
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    print(f'  行情源 {provider}；写入缓存 {DATA / "live.json"}',file=sys.stderr,flush=True)
     now=datetime.now(ZoneInfo('Asia/Shanghai'))
     calendar=ak.tool_trade_date_hist_sina()
     sessions=sorted(str(x)[:10] for x in calendar['trade_date'] if str(x)[:10]<=now.date().isoformat())
@@ -176,4 +177,4 @@ def sync_live(provider='eastmoney', codes=None, full=False, workers=None):
     result['complete']=not errors and not coverage_warning(result)
     result['quality_warnings']=[coverage_warning(result)] if coverage_warning(result) else []
     temp=DATA/'live.tmp'; temp.write_text(json.dumps(result,ensure_ascii=False,allow_nan=False),encoding='utf-8'); temp.replace(DATA/'live.json')
-    return {'stocks':len(stocks),'errors':len(errors),'as_of':expected,'complete':result['complete'],'coverage':result['coverage'],'warnings':result['quality_warnings'],'requests':len(todo),'incremental':bool(previous) and not full}
+    return {'provider':provider,'cache_path':str(DATA/'live.json'),'stocks':len(stocks),'errors':len(errors),'as_of':expected,'complete':result['complete'],'coverage':result['coverage'],'warnings':result['quality_warnings'],'requests':len(todo),'incremental':bool(previous) and not full}

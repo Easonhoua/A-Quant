@@ -8,7 +8,7 @@ def main():
     p.add_argument('command',choices=['demo','sync','report','daily','repair'])
     p.add_argument('--mode',choices=['demo','live'],default='demo')
     p.add_argument('--capital',type=float,default=100000)
-    p.add_argument('--provider',choices=['eastmoney','tencent'],default='eastmoney')
+    p.add_argument('--provider',choices=['eastmoney','tencent'],default='tencent')
     p.add_argument('--adx-filter',action='store_true',help='S1启用ADX对照过滤')
     p.add_argument('--code',action='append',help='repair局部补取股票代码，可重复传入')
     p.add_argument('--full',action='store_true',help='忽略缓存整段重取450天（修复历史或换数据源时用）')

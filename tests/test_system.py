@@ -20,6 +20,23 @@ class SystemTests(unittest.TestCase):
     def test_board_filter(self):
         for c in ['600001','601001','603001','605001','000001','001001','002001','003001','300001','301001']: self.assertTrue(allowed(c,'正常'))
         for c,n in [('688001','正常'),('920001','正常'),('830001','正常'),('600001','*ST甲'),('002001','退市甲'),('900001','正常')]: self.assertFalse(allowed(c,n))
+    def test_cli_sync_and_daily_default_to_same_provider(self):
+        import backend.cli as cli
+        for command in ['sync','daily']:
+            args=['aquant',command]
+            with patch('sys.argv',args),patch.object(cli,'sync_live',return_value={}) as sync,patch.object(cli,'load',side_effect=ValueError('no cache')),patch.object(cli,'Store',return_value=self.store),patch.object(cli,'DATA',Path(self.temp.name)),patch('builtins.print'):
+                cli.main()
+                self.assertEqual(sync.call_args.kwargs['provider'],'tencent')
+
+    def test_report_exposes_sync_source_and_errors(self):
+        snapshot={**self.snapshot,'provider':'eastmoney','fetched_at':'2026-11-02T18:07:22+08:00',
+                  'complete':False,'errors':[{'code':'000003','error':'空行情'}]}
+        with patch('backend.app.load',return_value=snapshot):
+            report=self.client.get('/api/daily?mode=live').json()
+        self.assertEqual(report['sync_info']['provider'],'eastmoney')
+        self.assertEqual(report['sync_info']['error_count'],1)
+        self.assertEqual(report['sync_info']['errors'],snapshot['errors'])
+        self.assertFalse(report['sync_info']['complete'])
     def test_buy_partial_sell_close(self):
         self.store.record(self.trade(quantity=300))
         self.store.record(self.trade('SELL',100,key='unique-request-2'))

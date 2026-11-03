@@ -32,6 +32,9 @@ class Store:
                 for lot in p['lots']:
                     n=min(left,lot[1]);lot[1]-=n;left-=n
                 if not p['quantity']:p['avg_cost']=0
+            # 剩余批次里最早的一天 = 当前持仓的开仓日（FIFO，卖出先冲最早批次）
+            if p['quantity']>0:
+                p['opened']=min(day for day,qty in p['lots'] if qty>0)
         return [{k:v for k,v in p.items() if k!='lots'} for p in result.values() if p['quantity']>0]
     def record(self, t):
         # BEGIN IMMEDIATE serializes validate+append to prevent concurrent oversells.
