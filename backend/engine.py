@@ -168,7 +168,7 @@ def stop_reference(price, atr):
 
 
 def daily(snapshot, positions, capital=100000, adx_filter=False, strict_filter=False,
-          amplitude_filter=False, market_filter=False, top_n=None, model_filter='ALL'):
+          amplitude_filter=False, market_filter=False, top_n=None, model_filter='ALL', rank='liquidity'):
     """持仓优先的收盘日报。
 
     amplitude_filter：信号日振幅超过该模型上限（S1 2.5×ATR / S2 1.5×ATR）时不计入候选。
@@ -178,6 +178,8 @@ def daily(snapshot, positions, capital=100000, adx_filter=False, strict_filter=F
     """
     if model_filter not in ('ALL', 'S1', 'S2'):
         raise ValueError("model_filter 只能是 ALL / S1 / S2")
+    if rank not in ('liquidity', 'volume', 'score'):
+        raise ValueError("rank 只能是 liquidity / volume / score")
     warnings=freshness(snapshot)
     stocks={s['code']:s for s in snapshot['stocks']}
     holdings=[]; value=0; cost_value=0; unknown=False
@@ -269,14 +271,32 @@ def daily(snapshot, positions, capital=100000, adx_filter=False, strict_filter=F
             limit_range=STRATEGY['max_day_range_atr'].get(model)
             if amplitude_filter and day_range is not None and limit_range and day_range>limit_range:
                 rejected_range[model]+=1; continue
-            found.append({'code':s['code'],'name':s['name'],'model':model,'reason':reason,'reference_close':close,'stop_reference':stop,'take_profit_reference':None,'risk_distance':round(close-stop,4),'atr':f['atr'],'rsi':f['rsi'],'adx':f['adx'],'liquidity20':f['amount20'],'day_range_atr':round(day_range,2) if day_range is not None else None})
+            vol=f['volume_ratio']; atrd=f['atr_distance']
+            if model=='S1':
+                rscore=(2 if vol<2 else 1 if vol<2.5 else 0)+(1 if atrd is not None and atrd<=2 else 0)
+                rmax=3; rparts=[f'量比{vol:.2f}']
+                if atrd is not None and atrd<=2: rparts.append(f'距MA20 {atrd:.2f}ATR')
+            else:
+                rscore=((2 if vol<0.7 else 1 if vol<1 else 0)
+                        +(1 if atrd is not None and atrd<0.3 else 0)
+                        +(1 if f['rsi']>=53 else 0))
+                rmax=4; rparts=[f'量比{vol:.2f}']
+                if atrd is not None and atrd<0.3: rparts.append(f'贴线{atrd:.2f}ATR')
+                if f['rsi']>=53: rparts.append(f"RSI{f['rsi']:.0f}")
+            found.append({'code':s['code'],'name':s['name'],'model':model,'reason':reason,'reference_close':close,'stop_reference':stop,'take_profit_reference':None,'risk_distance':round(close-stop,4),'atr':f['atr'],'rsi':f['rsi'],'adx':f['adx'],'liquidity20':f['amount20'],'volume_ratio':round(vol,2),'atr_distance':round(atrd,2) if atrd is not None else None,'rank_score':rscore,'rank_max':rmax,'rank_reason':' · '.join(rparts),'day_range_atr':round(day_range,2) if day_range is not None else None})
     by_model=Counter(c['model'] for c in found)
     if model_filter!='ALL': found=[c for c in found if c['model']==model_filter]
-    # Operational liquidity order, explicitly not a predicted-return score.
-    found.sort(key=lambda c:(-c['liquidity20'],c['code'],c['model']))
+    # 排序只决定"谁进名额"，不改变任何入场/离场判定；默认仍按流动性。
+    if rank=='volume':
+        found.sort(key=lambda c:(c['volume_ratio'],-c['liquidity20'],c['code'],c['model']))
+    elif rank=='score':
+        found.sort(key=lambda c:(-c['rank_score'],-c['liquidity20'],c['code'],c['model']))
+    else:
+        found.sort(key=lambda c:(-c['liquidity20'],c['code'],c['model']))
     limit=max(1,int(RULES['candidate_top_n'] if top_n is None else top_n))
     candidates=found[:limit]; overflow=found[limit:]
     weak=bool(market_filter and market['trustworthy'] and not market['index_above_ma20'])
+    order_desc={'liquidity':'按20日均成交额降序','volume':'按信号日量比升序（缩量优先）','score':'按质量分降序（研究用，未验证收益）'}[rank]
     # Allocate sequentially: suggestions cannot collectively exceed remaining exposure.
     remaining=max(0,capital*.70-value); allocated=set()
     for c in candidates:
@@ -293,12 +313,12 @@ def daily(snapshot, positions, capital=100000, adx_filter=False, strict_filter=F
                           '仅研究/禁止买入' if blocked else
                           '条件观察计划' if qty else
                           '低于最小计划风险预算' if too_small else '仓位或整手预算不足')
-        c['execution']=f'按20日均成交额降序进入前{limit}名（非收益排名）；下一交易日仅在可成交且不高于参考收盘价1%时人工复核；跳空、涨跌停、公告风险需重新评估'
+        c['execution']=f'{order_desc}进入前{limit}名（非收益排名）；下一交易日仅在可成交且不高于参考收盘价1%时人工复核；跳空、涨跌停、公告风险需重新评估'
         if not blocked and qty: remaining-=qty*c['reference_close']*1.005; allocated.add(c['code'])
     for c in overflow:
         c['suggested_quantity']=0
         c['plan_status']='未进入前%d名，仅备查' % limit
-        c['execution']='按20日均成交额排序排在名额之外；需要时可调大 top_n 查看，不进入当日预算分配'
+        c['execution']=f'{order_desc}排在名额之外；需要时可调大 top_n 查看，不进入当日预算分配'
     return {'as_of':snapshot['as_of'],'mode':snapshot['mode'],'warnings':warnings,'source_errors':snapshot.get('errors',[]),'sequence':['持仓逐一分析','组合风险','新选股'],
             'holdings':holdings,'risk':risk,'pool_count':len(pool),'excluded':excluded,'candidates':candidates,'candidates_overflow':overflow,
             'candidates_total':len(found),'candidates_total_all':sum(by_model.values()),
@@ -308,11 +328,11 @@ def daily(snapshot, positions, capital=100000, adx_filter=False, strict_filter=F
                             'rejected_day_range':sum(rejected_range.values()),
                             'rejected_by_model':dict(rejected_range),
                             'amplitude_limits':STRATEGY['max_day_range_atr'],
-                            'top_n':limit,'model_filter':model_filter,
+                            'top_n':limit,'model_filter':model_filter,'rank':rank,
                             'market_filter':bool(market_filter),'amplitude_filter':bool(amplitude_filter),
                             'market_blocks':weak},
             'data_quality':coverage(snapshot),'rules':RULES,
-            'strategy':{**STRATEGY,'adx_filter':adx_filter,'strict_filter':strict_filter,'model_filter':model_filter}}
+            'strategy':{**STRATEGY,'adx_filter':adx_filter,'strict_filter':strict_filter,'model_filter':model_filter,'rank':rank}}
 
 def backtest(stock, model='S1', capital=100000, commission=.0003, tax=.0005, slippage=.001, adx_filter=False, strict_filter=False):
     """Single asset long-only, signal on t close, fill t+1 open; T+1, lot size and conservative limit gates."""

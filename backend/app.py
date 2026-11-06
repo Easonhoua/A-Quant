@@ -43,14 +43,15 @@ def health(): return {'status':'ok','version':'1.0.0','strategy_version':STRATEG
 @app.get('/api/daily')
 def report(mode:Literal['demo','live']='demo',capital:float=Query(100000,ge=10000,le=1e10,allow_inf_nan=False),
            adx_filter:bool=False,strict_filter:bool=True,amplitude_filter:bool=True,market_filter:bool=True,
-           top_n:int=Query(3,ge=1,le=20),model_filter:Literal['ALL','S1','S2']='ALL'):
+           top_n:int=Query(3,ge=1,le=20),model_filter:Literal['ALL','S1','S2']='ALL',
+           rank:Literal['liquidity','volume','score']='liquidity'):
     try:
         try: snapshot=load(mode)
         except (ValueError,OSError) as e:
             snapshot={'mode':mode,'as_of':'','calendar_verified':False,'complete':False,'stocks':[],'errors':[{'error':str(e)}]}
         result=daily(snapshot,store.positions(mode),capital,adx_filter,strict_filter,
                      amplitude_filter=amplitude_filter,market_filter=market_filter,top_n=top_n,
-                     model_filter=model_filter)
+                     model_filter=model_filter,rank=rank)
         result['ledger']=store.ledger(mode)
         result['sync_info']={'provider':snapshot.get('provider'), 'fetched_at':snapshot.get('fetched_at'),
                              'complete':snapshot.get('complete',False), 'error_count':len(snapshot.get('errors',[])),
