@@ -1,4 +1,4 @@
-import json, os, random
+import json, os, random, inspect
 from datetime import date, timedelta, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -119,6 +119,12 @@ def sync_live(provider='eastmoney', codes=None, full=False, workers=None):
             results[code]={'code':code,'name':name,'bars':prev_bars}; continue
         todo.append((code,name))
 
+    # akshare 1.20 起腾讯日线接口删除了 timeout 形参；按签名判断能否传，
+    # 用 **kwargs 包装的旧版本或测试桩仍按"可传"处理（见 fetch）。
+    try: _tx_params=inspect.signature(ak.stock_zh_a_hist_tx).parameters
+    except (TypeError,ValueError): _tx_params={}
+    tx_timeout=provider=='tencent' and ('timeout' in _tx_params or any(p.kind is p.VAR_KEYWORD for p in _tx_params.values()))
+
     def fetch(code,name):
         prev=previous.get(code); prev_bars=_clip(prev['bars'],start_iso) if prev and prev.get('bars') else []
         # 只追加缺失区间；首次/整段重取才回到 450 天前
@@ -128,7 +134,11 @@ def sync_live(provider='eastmoney', codes=None, full=False, workers=None):
         for attempt in (1,2):
             try:
                 if provider=='tencent':
-                    frame=ak.stock_zh_a_hist_tx(symbol=('sh' if code.startswith('6') else 'sz')+code,start_date=begin,end_date=expected.replace('-',''),adjust='',timeout=20)
+                    # akshare 1.20 起 stock_zh_a_hist_tx 删除了 timeout 形参；老版本仍支持，
+                    # 按签名决定是否传，避免新版每只股票都 TypeError 而整轮同步全空。
+                    kwargs={'symbol':('sh' if code.startswith('6') else 'sz')+code,'start_date':begin,'end_date':expected.replace('-',''),'adjust':''}
+                    if tx_timeout: kwargs['timeout']=20
+                    frame=ak.stock_zh_a_hist_tx(**kwargs)
                     fresh=tencent_bars(frame)
                 else:
                     frame=ak.stock_zh_a_hist(symbol=code,period='daily',start_date=begin,end_date=expected.replace('-',''),adjust='')
