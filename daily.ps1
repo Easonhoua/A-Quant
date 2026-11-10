@@ -1,4 +1,4 @@
-﻿param([double]$Capital = 100000, [ValidateSet('tencent','eastmoney')][string]$Provider = 'tencent')
+﻿param([double]$Capital = 20000, [ValidateSet('tencent','eastmoney')][string]$Provider = 'tencent')
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 & '.venv/Scripts/python.exe' -m backend.cli daily --provider $Provider --capital $Capital
