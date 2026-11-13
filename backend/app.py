@@ -23,7 +23,7 @@ class TestRequest(BaseModel):
     code: str = Field(pattern=r'^\d{6}$')
     model: Literal['S1','S2']='S1'
     mode: Literal['demo','live']='demo'
-    capital: float = Field(default=100000,ge=10000,le=1e10,allow_inf_nan=False)
+    capital: float = Field(default=200000,ge=10000,le=1e10,allow_inf_nan=False)
     commission: float = Field(default=.0003,ge=0,le=.01,allow_inf_nan=False)
     tax: float = Field(default=.0005,ge=0,le=.01,allow_inf_nan=False)
     adx_filter: bool = False
@@ -41,7 +41,7 @@ def clear_positions(t:ClearPositionsRequest):
 def health(): return {'status':'ok','version':'1.0.0','strategy_version':STRATEGY['version'],'trading':'manual-only'}
 
 @app.get('/api/daily')
-def report(mode:Literal['demo','live']='demo',capital:float=Query(100000,ge=10000,le=1e10,allow_inf_nan=False),
+def report(mode:Literal['demo','live']='demo',capital:float=Query(200000,ge=10000,le=1e10,allow_inf_nan=False),
            adx_filter:bool=False,strict_filter:bool=True,amplitude_filter:bool=True,market_filter:bool=True,
            top_n:int=Query(3,ge=1,le=20),model_filter:Literal['ALL','S1','S2']='ALL',
            rank:Literal['liquidity','volume','score']='liquidity'):

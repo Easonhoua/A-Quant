@@ -14,7 +14,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 set "CAPITAL=%~1"
-if "%CAPITAL%"=="" set "CAPITAL=100000"
+if "%CAPITAL%"=="" set "CAPITAL=200000"
 
 echo ============================================================
 echo  A-Quant  close sync  +  daily report

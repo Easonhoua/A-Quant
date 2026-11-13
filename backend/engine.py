@@ -182,7 +182,10 @@ def daily(snapshot, positions, capital=100000, adx_filter=False, strict_filter=F
         raise ValueError("rank 只能是 liquidity / volume / score")
     warnings=freshness(snapshot)
     stocks={s['code']:s for s in snapshot['stocks']}
-    holdings=[]; value=0; cost_value=0; unknown=False
+    holdings=[]; value=0; cost_value=0; unknown=False; advisories=[]
+    # 流动性贴线：20日均成交额只比池子门槛(5000万)略高时，2ATR止损的单笔进出本身就会推动价格。
+    # 只做提示，不进 warnings，避免"持仓贴线"顺带阻断全部新买入计划。
+    liquidity_floor=RULES['min_amount20']*1.5
     # This phase MUST finish for every holding before scanning any candidates.
     for p in positions:
         s=stocks.get(p['code']); bars=s.get('bars',[]) if s else []
@@ -202,6 +205,10 @@ def daily(snapshot, positions, capital=100000, adx_filter=False, strict_filter=F
                              'last_known_market_value':round(last['close']*p['quantity'],2) if last else None})
             continue
         f=features(bars); mv=f['close']*p['quantity']; value+=mv
+        tight=f['amount20']<liquidity_floor
+        if tight:
+            advisories.append(f"{p['code']} {s['name'] if s else ''} 20日均成交额{f['amount20']/1e4:.0f}万元，"
+                              f"仅略高于5000万门槛：2ATR止损下这笔仓位要分批进出，别一次砸盘")
         anomalies=price_anomalies(bars[-61:],p['code'])
         stop=max(0,stop_reference(p['avg_cost'],f['atr']))
         close,atr,ma20=f['close'],f['atr'],f['ma20']
@@ -236,6 +243,7 @@ def daily(snapshot, positions, capital=100000, adx_filter=False, strict_filter=F
             warnings.append(p['code']+'近期异常价格跳变待核实：暂停新增计划')
         holdings.append({**p,'status':'已分析','close':close,'market_value':round(mv,2),
                          'pnl':round(mv-p['quantity']*p['avg_cost'],2),'stop':stop,
+                         'liquidity20':round(f['amount20'],2),'liquidity_tight':bool(tight),
                          'grade':grade,'action':action,
                          'dist_stop_pct':round(dist_stop,4) if dist_stop is not None else None,
                          'dist_stop_atr':round(dist_stop_atr,2) if dist_stop_atr is not None else None,
@@ -319,7 +327,7 @@ def daily(snapshot, positions, capital=100000, adx_filter=False, strict_filter=F
         c['suggested_quantity']=0
         c['plan_status']='未进入前%d名，仅备查' % limit
         c['execution']=f'{order_desc}排在名额之外；需要时可调大 top_n 查看，不进入当日预算分配'
-    return {'as_of':snapshot['as_of'],'mode':snapshot['mode'],'warnings':warnings,'source_errors':snapshot.get('errors',[]),'sequence':['持仓逐一分析','组合风险','新选股'],
+    return {'as_of':snapshot['as_of'],'mode':snapshot['mode'],'warnings':warnings,'advisories':advisories,'source_errors':snapshot.get('errors',[]),'sequence':['持仓逐一分析','组合风险','新选股'],
             'holdings':holdings,'risk':risk,'pool_count':len(pool),'excluded':excluded,'candidates':candidates,'candidates_overflow':overflow,
             'candidates_total':len(found),'candidates_total_all':sum(by_model.values()),
             'candidates_by_model':dict(by_model),'model_filter':model_filter,

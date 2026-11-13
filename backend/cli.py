@@ -7,9 +7,13 @@ def main():
     p=argparse.ArgumentParser(description='A-Quant 收盘同步和日报（持仓优先）')
     p.add_argument('command',choices=['demo','sync','report','daily','repair'])
     p.add_argument('--mode',choices=['demo','live'],default='demo')
-    p.add_argument('--capital',type=float,default=100000)
+    p.add_argument('--capital',type=float,default=200000)
     p.add_argument('--provider',choices=['eastmoney','tencent'],default='tencent')
     p.add_argument('--adx-filter',action='store_true',help='S1启用ADX对照过滤')
+    # 过滤默认与 /api/daily 保持一致（网页默认全开），要放宽必须显式关掉。
+    p.add_argument('--no-strict',action='store_true',help='关闭严格复筛（ADX/+DI/RSI/距MA20）')
+    p.add_argument('--no-amplitude',action='store_true',help='关闭信号日振幅过滤')
+    p.add_argument('--no-market',action='store_true',help='关闭弱市暂停（仅研究标记）')
     p.add_argument('--code',action='append',help='repair局部补取股票代码，可重复传入')
     p.add_argument('--full',action='store_true',help='忽略缓存整段重取450天（修复历史或换数据源时用）')
     p.add_argument('--workers',type=int,default=None,help='并行同步数，默认8；设为1恢复串行')
@@ -33,7 +37,9 @@ def main():
             if sync_error:
                 snapshot['complete']=False
                 snapshot.setdefault('errors',[]).append({'error':'本次同步失败：'+sync_error})
-            result=daily(snapshot,Store().positions(mode),a.capital,a.adx_filter)
+            result=daily(snapshot,Store().positions(mode),a.capital,a.adx_filter,
+                         strict_filter=not a.no_strict,amplitude_filter=not a.no_amplitude,
+                         market_filter=not a.no_market)
             path=DATA/f'report-{mode}.json';path.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
             print(str(path));print(' / '.join(result['warnings']) or '日报生成完成')
             if sync_error: print('本次同步失败，已生成持仓复核/缺失提示日报：'+sync_error);raise SystemExit(1)

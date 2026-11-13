@@ -25,11 +25,11 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1 -Install
 | 双击 | 作用 | 等价命令 |
 |---|---|---|
 | `run-start.cmd` | 启动网页服务（只启动，不装依赖、不同步行情） | `powershell -ExecutionPolicy Bypass -File .\start.ps1` |
-| `run-daily.cmd` | 全市场收盘同步 + 生成日报；默认权益 10 万，可带参数 | `powershell -ExecutionPolicy Bypass -File .\daily.ps1 -Capital 100000` |
+| `run-daily.cmd` | 全市场收盘同步 + 生成日报；默认权益 20 万，可带参数 | `powershell -ExecutionPolicy Bypass -File .\daily.ps1 -Capital 200000` |
 | `run-review.cmd` | 只读体检/研究工具，默认跑 `snapshot`；可带子命令 | `.venv\Scripts\python.exe -X utf8 -m tools.review` |
 | `run-sync.cmd` | 只同步腾讯行情，**不**生成日报 | `.venv\Scripts\python.exe -m backend.cli sync --provider tencent` |
 
-- 权益不是 10 万时：命令行运行 `run-daily.cmd 250000`，或直接改 `daily.ps1` 的参数。
+- 权益不是 20 万时：命令行运行 `run-daily.cmd 300000`，或直接改 `daily.ps1` 的参数。
 - `run-review.cmd` 也能带子命令：`run-review.cmd study`、`run-review.cmd refine`、`run-review.cmd snapshot --mode demo`。
 - **只有第一次**需要 `start.ps1 -Install`（装 Python 依赖 + 构建前端）；之后双击 `run-start.cmd` 即可。若 `.venv` 已删除或 `frontend\dist` 不存在，仍要再跑一次 `-Install`。
 - 这些 `.cmd` 末尾都有 `pause`，出错时窗口不会一闪而过，方便看报错。
@@ -53,19 +53,21 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1 -Install
 ```powershell
 .venv\Scripts\python.exe -m pip install -r requirements-live.txt
 .venv\Scripts\python.exe -m backend.cli sync                          # 全市场同步；首次回补450天，之后只取新增交易日
-.venv\Scripts\python.exe -m backend.cli report --mode live --capital 100000
+.venv\Scripts\python.exe -m backend.cli report --mode live --capital 200000
 ```
 
 所有默认命令（`sync`、`daily`、`run-sync.cmd`、`run-daily.cmd` 和定时日报）统一使用腾讯日线 / 新浪名单。需要东方财富时显式传 `--provider eastmoney` 或 `daily.ps1 -Provider eastmoney`；两种来源的名单可能不同，切换来源会覆盖同一份 `data/live.json` 并整段重取。界面显示当前缓存来源、同步时间与错误数。
 
-或者一条命令：`powershell -ExecutionPolicy Bypass -File .\daily.ps1 -Capital 100000`（同步 + 持仓优先日报）。
+或者一条命令：`powershell -ExecutionPolicy Bypass -File .\daily.ps1 -Capital 200000`（同步 + 持仓优先日报）。
 
 生成 `data/report-live.json` 后，页面切到「AKShare 本地缓存」再点「重新分析」。**前端刷新只读缓存，不会偷偷发起几千次行情请求。**
+
+命令行日报的过滤默认与网页 API 一致：严格复筛、振幅过滤、弱市暂停**默认全开**，需要放宽时显式关掉（`--no-strict` / `--no-amplitude` / `--no-market`）。持仓的 20 日均成交额只略高于 5000 万门槛时，日报会在 `advisories` 里单独提示流动性贴线，不影响新买入计划。
 
 - 东方财富日线连不上时：先 `tests\probe_universe.py` 验证新浪名单，再用 `-m backend.cli daily --provider tencent`（新浪名单 + 腾讯不复权日线）。单只连接成功不代表全市场同步通过。
 - 只补某一只股票（局部补取，不要和全市场同步同时跑）：
   `.venv\Scripts\python.exe -X utf8 -m backend.cli repair --provider tencent --code 002714`
-- 可选定时任务（**脚本随项目交付，未替你注册**）：`.\install-schedule.ps1 -Capital 100000`，工作日 18:00 运行。需要开机、联网、AKShare，Windows 时区设为中国时间。用「任务计划程序」查看或删除 `A-Quant-V1-Close` 即可停用。
+- 可选定时任务（**脚本随项目交付，未替你注册**）：`.\install-schedule.ps1 -Capital 200000`，工作日 18:00 运行。需要开机、联网、AKShare，Windows 时区设为中国时间。用「任务计划程序」查看或删除 `A-Quant-V1-Close` 即可停用。
 
 **同步完先跑一次体检**（见第 7 节 `snapshot`）：确认 `complete=true`、`errors=0`、`as_of` 是最近的已收盘交易日，且目标日 K 线覆盖率 ≥98%。覆盖率不足时页面会明确告警并禁止新计划。
 

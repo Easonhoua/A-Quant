@@ -295,7 +295,7 @@ def main(argv=None):
                              "sensitivity=参数网格；refine=候选过滤/排序实验；"
                              "backtest=抽样回测；all=全部（不含 refine）")
     parser.add_argument("--mode", choices=["live", "demo"], default="live", help="读取哪个行情（默认 live）")
-    parser.add_argument("--capital", type=float, default=100000, help="账户总权益，用于仓位检查")
+    parser.add_argument("--capital", type=float, default=200000, help="账户总权益，用于仓位检查")
     parser.add_argument("--stocks", type=int, default=None, help="sensitivity/backtest 的抽样股票数")
     parser.add_argument("--strict", action="store_true", default=True, help="快照体检时开启严格复筛（默认开）")
     parser.add_argument("--no-strict", dest="strict", action="store_false", help="关闭严格复筛")

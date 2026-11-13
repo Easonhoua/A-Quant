@@ -1,4 +1,4 @@
-﻿param([double]$Capital = 100000)
+﻿param([double]$Capital = 200000)
 $ErrorActionPreference = 'Stop'
 if ($Capital -lt 10000) { throw '总权益至少10000' }
 $script = Join-Path $PSScriptRoot 'daily.ps1'

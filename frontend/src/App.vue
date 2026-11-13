@@ -8,7 +8,7 @@ echarts.use([LineChart,GridComponent,TooltipComponent,CanvasRenderer])
 function readSetting(key){try{return localStorage.getItem(key)}catch{return null}}
 const savedMode=readSetting('aquant.mode')
 const mode=ref(savedMode==='live'?'live':'demo')
-function readCapital(mode){const value=Number(readSetting(`aquant.capital.${mode}`));return Number.isFinite(value)&&value>=10000&&value<=1e10?value:100000}
+function readCapital(mode){const value=Number(readSetting(`aquant.capital.${mode}`));return Number.isFinite(value)&&value>=10000&&value<=1e10?value:200000}
 const capital=ref(readCapital(mode.value)),report=ref(null),error=ref(''),busy=ref(false),tab=ref('daily'),test=ref(null),chartEl=ref(null)
 watch(capital,value=>{if(typeof value==='number'&&Number.isFinite(value)&&value>=10000&&value<=1e10){try{localStorage.setItem(`aquant.capital.${mode.value}`,String(value))}catch{}}},{flush:'sync'})
 function changeMode(){ledgerPage.value=1;capital.value=readCapital(mode.value);try{localStorage.setItem('aquant.mode',mode.value)}catch{};refresh()}
